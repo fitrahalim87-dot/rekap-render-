@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1220">
+<title>Recap Render — Pairing</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#111c30;--line:#263650;--text:#f4f7fb;--muted:#a8b6cc;--blue:#5aa7ff;--yellow:#ffd166;--green:#63d6a0;--red:#ff8585}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,#172e50 0,transparent 36%),var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{width:min(760px,100%);margin:auto;padding:22px 16px 50px}.brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}.logo{display:grid;place-items:center;width:48px;height:48px;border-radius:15px;background:linear-gradient(135deg,#ffd166,#ff9f43);color:#172033;font-weight:900;font-size:20px}.brand h1{font-size:21px;margin:0}.brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.card{background:rgba(17,28,48,.94);border:1px solid var(--line);border-radius:20px;padding:18px;margin:14px 0;box-shadow:0 12px 32px #0002}.eyebrow{color:var(--yellow);font-weight:750;text-transform:uppercase;letter-spacing:.12em;font-size:11px}.card h2{font-size:18px;margin:5px 0 6px}.muted{color:var(--muted);font-size:14px}.row{display:flex;gap:10px;align-items:center}.row>*{flex:1}label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}input,button{font:inherit;border-radius:12px}input{width:100%;padding:14px;border:1px solid #344967;background:#091322;color:white;outline:none}input:focus{border-color:var(--blue)}button{border:0;padding:13px 16px;font-weight:750;cursor:pointer;background:var(--yellow);color:#182236;width:100%;margin-top:12px}button.secondary{background:#243650;color:white;border:1px solid #3b5272}button:disabled{opacity:.55;cursor:not-allowed}.status{display:flex;align-items:center;gap:9px;font-weight:700}.dot{width:10px;height:10px;border-radius:50%;background:#718096}.dot.ok{background:var(--green);box-shadow:0 0 0 4px #63d6a01c}.dot.bad{background:var(--red)}.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.stat{padding:12px;border:1px solid var(--line);border-radius:12px;min-width:0}.stat small{display:block;color:var(--muted);font-size:12px}.stat strong{display:block;overflow-wrap:anywhere;font-size:14px;margin-top:4px}.hidden{display:none!important}.notice{padding:11px 12px;border-radius:12px;background:#182943;color:#c6d8ef;font-size:13px;margin-top:12px}.notice.error{background:#3a2028;color:#ffd3d3}.notice.success{background:#15342d;color:#c4ffe6}.code{font-size:28px;letter-spacing:.18em;font-weight:850}.footer{color:var(--muted);font-size:12px;text-align:center;margin-top:24px}
+@media(min-width:600px){main{padding-top:38px}.card{padding:22px}}
+</style>
+</head>
+<body>
+<main>
+  <header class="brand"><div class="logo">RR</div><div><h1>Recap Render</h1><p>Colab Worker Pairing Console</p></div></header>
+  <section class="card">
+    <div class="eyebrow">Hubungkan worker</div>
+    <h2>Masukkan kode akses Colab</h2>
+    <p class="muted">Jalankan notebook Recap Render terlebih dahulu. Masukkan kode enam digit yang muncul setelah worker terdaftar.</p>
+    <form id="pairForm">
+      <label for="accessCode">Kode akses</label>
+      <input id="accessCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="Contoh: 482731" required>
+      <button id="pairButton" type="submit">Hubungkan Worker</button>
+    </form>
+    <div id="pairMessage" class="notice hidden" role="status"></div>
+  </section>
+  <section class="card">
+    <div class="eyebrow">Status koneksi</div>
+    <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">Belum terhubung</span></div>
+    <div class="statgrid">
+      <div class="stat"><small>Jenis layanan</small><strong>Recap Render</strong></div>
+      <div class="stat"><small>Worker ID</small><strong id="workerId">—</strong></div>
+      <div class="stat"><small>API health</small><strong id="health">Belum diperiksa</strong></div>
+      <div class="stat"><small>Sesi</small><strong id="sessionState">Tidak aktif</strong></div>
+    </div>
+    <div id="statusMessage" class="notice">Kode akses menghubungkan browser ke worker Colab melalui backend pairing.</div>
+    <div class="row">
+      <button id="checkButton" class="secondary" type="button">Periksa Status</button>
+      <button id="disconnectButton" class="secondary" type="button">Putuskan Sesi</button>
+    </div>
+  </section>
+  <section class="card">
+    <div class="eyebrow">Aksi worker</div>
+    <h2>Periksa mesin render</h2>
+    <p class="muted">Tes ini memanggil endpoint <code>/health</code> pada worker yang sudah dipasangkan. Alur render penuh perlu disambungkan ke format payload yang dipakai notebook Anda.</p>
+    <button id="healthButton" type="button">Tes Koneksi Render</button>
+    <div id="healthMessage" class="notice hidden" role="status"></div>
+  </section>
+  <p class="footer">Jangan bagikan kode pairing atau token sesi kepada orang lain. Worker akan terputus saat Colab berhenti atau sesi kedaluwarsa.</p>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let sessionToken = "";
+try { sessionToken = localStorage.getItem("rr_pair_session") || ""; } catch (_) {}
+function message(id, text, type="") {
+  const el=$(id); el.textContent=text; el.className="notice"+(type?" "+type:"");
+}
+function showPair(text,type="") { message("pairMessage",text,type); }
+function setStatus(online,text) {
+  $("statusDot").className="dot"+(online?" ok":" bad");
+  $("statusText").textContent=text;
+}
+async function api(path, options={}) {
+  const headers={"Content-Type":"application/json",...(options.headers||{})};
+  if(sessionToken) headers.Authorization="Bearer "+sessionToken;
+  const res=await fetch(path,{...options,headers});
+  const data=await res.json().catch(()=>({error:"Respons server bukan JSON"}));
+  if(!res.ok) throw new Error(data.error || `Permintaan gagal (${res.status})`);
+  return data;
+}
+$("pairForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const code=$("accessCode").value.trim();
+  if(!/^\d{6}$/.test(code)){showPair("Kode harus terdiri dari 6 angka.","error");return;}
+  $("pairButton").disabled=true;showPair("Memverifikasi kode akses…");
+  try {
+    const data=await api("/api/pair",{method:"POST",body:JSON.stringify({code})});
+    sessionToken=data.token;
+    try{localStorage.setItem("rr_pair_session",sessionToken)}catch(_){}
+    $("accessCode").value="";
+    showPair("Worker berhasil dipasangkan.","success");
+    await refreshStatus();
+  } catch(err) { showPair(err.message,"error"); }
+  finally{$("pairButton").disabled=false;}
+});
+async function refreshStatus(){
+  if(!sessionToken){setStatus(false,"Belum terhubung");$("sessionState").textContent="Tidak aktif";return;}
+  try{
+    const data=await api("/api/status");
+    $("workerId").textContent=data.worker_id||"—";
+    $("sessionState").textContent=data.session_active?"Aktif":"Kedaluwarsa";
+    $("health").textContent=data.worker_online?"Online":"Offline";
+    setStatus(!!data.worker_online,data.worker_online?"Worker terhubung":"Worker tidak aktif");
+    message("statusMessage",data.worker_online?"Worker Colab aktif dan terdaftar.":"Sesi tersedia, tetapi heartbeat worker tidak terdeteksi.",data.worker_online?"success":"error");
+  }catch(err){
+    if(/sesi|session|token|kedaluwarsa|expired/i.test(err.message)){
+      sessionToken="";try{localStorage.removeItem("rr_pair_session")}catch(_){}
+    }
+    setStatus(false,"Koneksi belum tersedia");$("sessionState").textContent="Tidak aktif";
+    message("statusMessage",err.message,"error");
+  }
+}
+$("checkButton").addEventListener("click",refreshStatus);
+$("healthButton").addEventListener("click",async()=>{
+  $("healthButton").disabled=true;message("healthMessage","Menghubungi worker…");
+  try{
+    const data=await api("/api/worker/health");
+    message("healthMessage","Worker merespons. "+JSON.stringify(data).slice(0,700),"success");
+    $("health").textContent="Respons diterima";
+  }catch(err){message("healthMessage",err.message,"error");}
+  finally{$("healthButton").disabled=false;}
+});
+$("disconnectButton").addEventListener("click",async()=>{
+  try{if(sessionToken) await api("/api/logout",{method:"POST",body:"{}"});}catch(_){}
+  sessionToken="";try{localStorage.removeItem("rr_pair_session")}catch(_){}
+  setStatus(false,"Belum terhubung");$("workerId").textContent="—";$("health").textContent="Belum diperiksa";$("sessionState").textContent="Tidak aktif";
+  message("statusMessage","Sesi lokal sudah diputuskan.");
+});
+if(sessionToken) refreshStatus();
+</script>
+</body>
+</html>
